@@ -1,5 +1,5 @@
 import cron from "node-cron";
-import { User } from "../../models/user.models.js";
+import { User } from "../models/user.models.js";
 
 
 const resetTheDailyLimits = () => {
