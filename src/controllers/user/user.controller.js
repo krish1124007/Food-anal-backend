@@ -6,7 +6,7 @@ import { parseAIJSON } from "../../utils/parseJson.js";
 
 async function AiAnswer(limits, user_Details, product_ingredients) {
 
-    const result = await fetch("http://localhost:8000/analyze", {
+    const result = await fetch("https://food-py-back.onrender.com/analyze", {
         method: "POST",
         headers: {
             "Content-Type": "application/json"
@@ -21,7 +21,7 @@ async function AiAnswer(limits, user_Details, product_ingredients) {
 }
 
 async function setDailyLimits(user_details) {
-    const result = await fetch("http://localhost:8000/setDailyLimits", {
+    const result = await fetch("https://food-py-back.onrender.com/setDailyLimits", {
         method: "POST",
         headers: {
             "Content-Type": "application/json"
@@ -32,6 +32,34 @@ async function setDailyLimits(user_details) {
     })
     return result;
 }
+
+
+
+
+//user update functions
+
+const updateUser = asyncHandler(async (req, res) => {
+    const { user_update_object } = req.body;
+
+    const user = await User.findByIdAndUpdate(req.user.id, user_update_object, { new: true });
+
+    if (!user) {
+        return returnCode(res, 500, false, "user is not found", null);
+    }
+
+    return returnCode(res, 200, true, "user updated successfully", user);
+
+})
+
+const deleteUser = asyncHandler(async (req, res) => {
+    const user = await User.findByIdAndDelete(req.user.id);
+
+    if (!user) {
+        return returnCode(res, 500, false, "user is not found", null);
+    }
+
+    return returnCode(res, 200, true, "user deleted successfully", user);
+})
 
 const setTheDailyLimits = asyncHandler(async (req, res) => {
 
@@ -65,6 +93,8 @@ const setTheDailyLimits = asyncHandler(async (req, res) => {
     return returnCode(res, 200, true, "successfully fetch all details", aiResponse);
 })
 
+
+
 const askToAiToEatOrNot = asyncHandler(async (req, res) => {
     const { name_of_food, des } = req.body;
     const user = req.user
@@ -94,9 +124,8 @@ const askToAiToEatOrNot = asyncHandler(async (req, res) => {
 
 })
 
-const AcceptFood = asyncHandler(async (req, res) => {
+const acceptFood = asyncHandler(async (req, res) => {
     const { limits_update } = req.body;
-
     const user_id = req.user.id;
 
     const user = await User.findById(user_id);
@@ -105,38 +134,64 @@ const AcceptFood = asyncHandler(async (req, res) => {
         return returnCode(res, 500, false, "user is not found", null);
     }
 
+    // 1. Identify Today's Date (ignoring time for comparison)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-    // Recursive function to update limits (subtracting values)
+    // 2. Find today's history entry
+    let todayHistory = user.nutritionHistory.find(h => {
+        const hDate = new Date(h.date);
+        hDate.setHours(0, 0, 0, 0);
+        return hDate.getTime() === today.getTime();
+    });
+
+    // 3. If not found, create it
+    if (!todayHistory) {
+        user.nutritionHistory.push({
+            date: today,
+            calories: 0,
+            protein: 0,
+            carbs: 0,
+            fat: 0,
+            sugar: 0,
+            fiber: 0,
+            micronutrients: {}
+        });
+        todayHistory = user.nutritionHistory[user.nutritionHistory.length - 1]; // Get the newly added reference
+    }
+
+    // 4. Recursive Update Function for History (Incrementing)
     const updateStats = (target, source) => {
         for (const key in source) {
             if (typeof source[key] === 'object' && source[key] !== null && !Array.isArray(source[key])) {
-                if (!target[key]) target[key] = {};
-                updateStats(target[key], source[key]);
+                if (!target[key]) target[key] = {}; // Ensure nested object exists
+                updateStats(target[key], source[key]); // Recurse
             } else if (typeof source[key] === 'number') {
-                if (typeof target[key] === 'number') {
-                    target[key] -= source[key];
-                } else {
-                    target[key] = -source[key];
+                // Initialize if undefined
+                if (typeof target[key] !== 'number') {
+                    target[key] = 0;
                 }
+                // ADD the value (Consumption increases)
+                target[key] += source[key];
             }
         }
     };
 
-    updateStats(user.dailyLimits, limits_update);
-    user.markModified('dailyLimits');
+    // Apply updates to the history entry
+    updateStats(todayHistory, limits_update);
 
     await user.save();
 
-    return returnCode(res, 200, true, "successfully updated limits", user);
+    return returnCode(res, 200, true, "successfully updated intake history", user);
 })
 
 
 export {
     askToAiToEatOrNot,
-    AcceptFood,
-    setTheDailyLimits
+    acceptFood,
+    setTheDailyLimits,
+    updateUser,
+    deleteUser
 }
- 
 
 
-// in the fronend when the click on the scan than open the camara and also give option to click photo upload from galarray ad not upload photo after the seelct sif click the photo than show after click if select from galaary than after that show the that phoot and two input food name and description and add the button scan after the scan user can se two button Eat and reject and summary about the

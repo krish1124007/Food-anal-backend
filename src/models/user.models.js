@@ -94,6 +94,7 @@ const userSchema = new mongoose.Schema(
     height: { type: Number, required: true }, // cm
     weight: { type: Number, required: true }, // kg
     scan_limit:{type:Number , default:5},
+    scan_remain:{type:Number , default:5},
 
     activityLevel: {
       type: String,
