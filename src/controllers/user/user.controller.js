@@ -109,6 +109,17 @@ const askToAiToEatOrNot = asyncHandler(async (req, res) => {
     const { name_of_food, des } = req.body;
     const user = req.user;
 
+    if (!req.file) {
+        return returnCode(
+            res,
+            400,
+            false,
+            "Food image is required",
+            null
+        );
+    }
+
+
     const uploadResult = await uploadBufferToCloudinary(
         req.file.buffer,
         "Food"
