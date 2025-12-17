@@ -116,6 +116,7 @@ const askToAiToEatOrNot = asyncHandler(async (req, res) => {
         description: des
     });
 
+    console.log(main_result)
 
     const aiResponse = await main_result.json();
     console.log(aiResponse)
