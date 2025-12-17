@@ -4,21 +4,31 @@ import { User } from "../../models/user.models.js";
 import { uploadBufferToCloudinary } from "../../middlewares/multer.js"
 import { parseAIJSON } from "../../utils/parseJson.js";
 
-async function AiAnswer(limits, user_Details, product_ingredients) {
+export async function AiAnswer(limits, user_Details, product_ingredients) {
+    const response = await fetch(
+        "https://food-py-back.onrender.com/analyze",
+        {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                dailyuserlimits: limits,
+                user_Details,
+                product_Details: product_ingredients
+            })
+        }
+    );
 
-    const result = await fetch("https://food-py-back.onrender.com/analyze", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            dailyuserlimits: limits,
-            user_Details: user_Details,
-            product_Details: product_ingredients
-        })
-    })
-    return result;
+    if (!response.ok) {
+        const text = await response.text();
+        console.error("Python AI error:", text);
+        throw new Error("AI service failed");
+    }
+
+    return await response.json();
 }
+
 
 async function setDailyLimits(user_details) {
     const result = await fetch("https://food-py-back.onrender.com/setDailyLimits", {
@@ -97,33 +107,41 @@ const setTheDailyLimits = asyncHandler(async (req, res) => {
 
 const askToAiToEatOrNot = asyncHandler(async (req, res) => {
     const { name_of_food, des } = req.body;
-    const user = req.user
-    const result = await uploadBufferToCloudinary(req.file.buffer, 'Food');
+    const user = req.user;
+
+    const uploadResult = await uploadBufferToCloudinary(
+        req.file.buffer,
+        "Food"
+    );
 
     const main_user = await User.findById(user.id);
 
+    const aiResult = await AiAnswer(
+        main_user.dailyLimits,
+        {
+            age: main_user.age,
+            gender: main_user.gender,
+            height: main_user.height,
+            weight: main_user.weight,
+            activityLevel: main_user.activityLevel,
+            goals: main_user.goals,
+        },
+        {
+            image_url: uploadResult.secure_url,
+            name: name_of_food,
+            description: des
+        }
+    );
 
-    const main_result = await AiAnswer(main_user.dailyLimits, {
-        age: main_user.age,
-        gender: main_user.gender,
-        height: main_user.height,
-        weight: main_user.weight,
-        activityLevel: main_user.activityLevel,
-        goals: main_user.goals,
-    }, {
-        image_url: result.secure_url,
-        name: name_of_food,
-        description: des
-    });
+    return returnCode(
+        res,
+        200,
+        true,
+        "Successfully fetched AI analysis",
+        aiResult
+    );
+});
 
-    console.log(main_result)
-
-    const aiResponse = await main_result.json();
-    console.log(aiResponse)
-
-    return returnCode(res, 200, true, "successfully fetch all details", aiResponse);
-
-})
 
 const acceptFood = asyncHandler(async (req, res) => {
     const { limits_update } = req.body;
