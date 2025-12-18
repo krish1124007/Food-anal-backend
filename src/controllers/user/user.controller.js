@@ -144,12 +144,14 @@ const askToAiToEatOrNot = asyncHandler(async (req, res) => {
         }
     );
 
+    console.log(typeof JSON.parse(aiResult.ai_response));
+
     return returnCode(
         res,
         200,
         true,
         "Successfully fetched AI analysis",
-        aiResult
+        JSON.parse(aiResult.ai_response)
     );
 });
 
