@@ -21,8 +21,8 @@ export async function AiAnswer(limits, user_Details, product_ingredients) {
     );
 
     if (!response.ok) {
-        const text = await response.text();
-        console.error("Python AI error:", text);
+        
+        console.error("Python AI error:", response);
         throw new Error("AI service failed");
     }
 
@@ -157,7 +157,7 @@ const askToAiToEatOrNot = asyncHandler(async (req, res) => {
 
 
 const acceptFood = asyncHandler(async (req, res) => {
-    const { limits_update } = req.body;
+    const { limits_update, date } = req.body;
     const user_id = req.user.id;
 
     const user = await User.findById(user_id);
@@ -166,21 +166,28 @@ const acceptFood = asyncHandler(async (req, res) => {
         return returnCode(res, 500, false, "user is not found", null);
     }
 
-    // 1. Identify Today's Date (ignoring time for comparison)
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // 1. Identify Target Date
+    // If date is provided (YYYY-MM-DD), use it. Otherwise fall back to server today.
+    let targetDate;
+    if (date) {
+        targetDate = new Date(date);
+    } else {
+        targetDate = new Date();
+    }
+    // Normalize to midnight for consistent comparison
+    targetDate.setHours(0, 0, 0, 0);
 
-    // 2. Find today's history entry
-    let todayHistory = user.nutritionHistory.find(h => {
+    // 2. Find history entry for that date
+    let targetHistory = user.nutritionHistory.find(h => {
         const hDate = new Date(h.date);
         hDate.setHours(0, 0, 0, 0);
-        return hDate.getTime() === today.getTime();
+        return hDate.getTime() === targetDate.getTime();
     });
 
     // 3. If not found, create it
-    if (!todayHistory) {
+    if (!targetHistory) {
         user.nutritionHistory.push({
-            date: today,
+            date: targetDate,
             calories: 0,
             protein: 0,
             carbs: 0,
@@ -189,7 +196,7 @@ const acceptFood = asyncHandler(async (req, res) => {
             fiber: 0,
             micronutrients: {}
         });
-        todayHistory = user.nutritionHistory[user.nutritionHistory.length - 1]; // Get the newly added reference
+        targetHistory = user.nutritionHistory[user.nutritionHistory.length - 1];
     }
 
     // 4. Recursive Update Function for History (Incrementing)
@@ -210,7 +217,7 @@ const acceptFood = asyncHandler(async (req, res) => {
     };
 
     // Apply updates to the history entry
-    updateStats(todayHistory, limits_update);
+    updateStats(targetHistory, limits_update);
 
     await user.save();
 
