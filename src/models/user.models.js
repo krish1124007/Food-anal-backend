@@ -120,7 +120,6 @@ const userSchema = new mongoose.Schema(
 
     goals: {
       type: String,
-      enum: ["weight_loss", "weight_gain", "muscle_gain", "healthy_life"],
       default: "healthy_life",
     },
 
