@@ -4,43 +4,80 @@ import { User } from "../../models/user.models.js";
 import { uploadBufferToCloudinary } from "../../middlewares/multer.js"
 import { parseAIJSON } from "../../utils/parseJson.js";
 
-export async function AiAnswer(limits, user_Details, product_ingredients) {
-    const response = await fetch(
-        "https://food-py-back.onrender.com/analyze",
-        {
+export async function nutritionAnalyticsAgent(limits, user_Details, product_ingredients) {
+    const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || "http://127.0.0.1:8000";
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+    try {
+        const response = await fetch(
+            `${PYTHON_BACKEND_URL}/analyze`,
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    dailyuserlimits: limits,
+                    user_Details,
+                    product_Details: product_ingredients
+                }),
+                signal: controller.signal
+            }
+        );
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+            // Get the error details from FastAPI
+            const errorData = await response.json().catch(() => null);
+            console.error("Python AI error:", {
+                status: response.status,
+                statusText: response.statusText,
+                errorDetails: errorData
+            });
+            throw new Error(`AI service failed: ${response.status} - ${errorData?.detail || response.statusText}`);
+        }
+
+        return await response.json();
+    } catch (error) {
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+            throw new Error('AI service timeout - please try again');
+        }
+        throw error;
+    }
+}
+
+
+async function setDailyLimits(user_details) {
+    const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || "http://127.0.0.1:8000";
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+
+    try {
+        const result = await fetch(`${PYTHON_BACKEND_URL}/setDailyLimits`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
-                dailyuserlimits: limits,
-                user_Details,
-                product_Details: product_ingredients
-            })
+                user_Details: user_details
+            }),
+            signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+        return result;
+    } catch (error) {
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+            throw new Error('Daily limits service timeout - please try again');
         }
-    );
-
-    if (!response.ok) {
-        
-        console.error("Python AI error:", response);
-        throw new Error("AI service failed");
+        throw error;
     }
-
-    return await response.json();
-}
-
-
-async function setDailyLimits(user_details) {
-    const result = await fetch("https://food-py-back.onrender.com/setDailyLimits", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            user_Details: user_details
-        })
-    })
-    return result;
 }
 
 
@@ -86,6 +123,8 @@ const setTheDailyLimits = asyncHandler(async (req, res) => {
         weight: user.weight,
         activityLevel: user.activityLevel,
         goals: user.goals,
+        illness: user.illnesses,
+        AdditionalInfo: user.AdditionalInfo
     })
 
     let aiRaw = await result.json();
@@ -109,6 +148,29 @@ const askToAiToEatOrNot = asyncHandler(async (req, res) => {
     const { name_of_food, des } = req.body;
     const user = req.user;
 
+    // Validate required fields
+    if (!name_of_food || typeof name_of_food !== 'string' || name_of_food.trim() === '') {
+        return returnCode(
+            res,
+            400,
+            false,
+            "Food name is required and must be a non-empty string",
+            null
+        );
+    }
+
+    // Validate description (optional but if provided, should be string)
+    if (des && typeof des !== 'string') {
+        return returnCode(
+            res,
+            400,
+            false,
+            "Food description must be a string if provided",
+            null
+        );
+    }
+
+
     if (!req.file) {
         return returnCode(
             res,
@@ -119,15 +181,27 @@ const askToAiToEatOrNot = asyncHandler(async (req, res) => {
         );
     }
 
+    console.log("The file is : ", req.file)
 
     const uploadResult = await uploadBufferToCloudinary(
         req.file.buffer,
         "Food"
     );
 
+    console.log("upload result is : ", uploadResult)
+
     const main_user = await User.findById(user.id);
 
-    const aiResult = await AiAnswer(
+    const product_Details = {
+        image_url: uploadResult.secure_url,
+        name: name_of_food,
+        description: des && des.trim() ? des.trim() : "No description provided"
+    };
+
+
+    console.log("Sending to AI - product_Details:", product_Details);
+
+    const aiResult = await nutritionAnalyticsAgent(
         main_user.dailyLimits,
         {
             age: main_user.age,
@@ -136,12 +210,10 @@ const askToAiToEatOrNot = asyncHandler(async (req, res) => {
             weight: main_user.weight,
             activityLevel: main_user.activityLevel,
             goals: main_user.goals,
+            illness: main_user.illnesses,
+            AdditionalInfo: main_user.AdditionalInfo
         },
-        {
-            image_url: uploadResult.secure_url,
-            name: name_of_food,
-            description: des
-        }
+        product_Details
     );
 
     console.log(typeof JSON.parse(aiResult.ai_response));
@@ -194,7 +266,13 @@ const acceptFood = asyncHandler(async (req, res) => {
             fat: 0,
             sugar: 0,
             fiber: 0,
-            micronutrients: {}
+            vitaminA: 0,
+            vitaminB: 0,
+            vitaminC: 0,
+            vitaminD: 0,
+            vitaminE: 0,
+            vitaminK: 0,
+            calcium: 0
         });
         targetHistory = user.nutritionHistory[user.nutritionHistory.length - 1];
     }

@@ -2,53 +2,53 @@ import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 
-const MicroNutrientsSchema = new mongoose.Schema({
-  // --- Vitamins ---
-  vitaminA: { type: Number, default: 0 },            // Retinol + Beta-carotene
-  vitaminB1: { type: Number, default: 0 },            // Thiamine
-  vitaminB2: { type: Number, default: 0 },            // Riboflavin
-  vitaminB3: { type: Number, default: 0 },            // Niacin
-  vitaminB5: { type: Number, default: 0 },            // Pantothenic Acid
-  vitaminB6: { type: Number, default: 0 },            // Pyridoxine
-  vitaminB7: { type: Number, default: 0 },            // Biotin
-  vitaminB9: { type: Number, default: 0 },            // Folate
-  vitaminB12: { type: Number, default: 0 },           // Cobalamin
-  vitaminC: { type: Number, default: 0 },
-  vitaminD: { type: Number, default: 0 },
-  vitaminE: { type: Number, default: 0 },
-  vitaminK: { type: Number, default: 0 },
+// const MicroNutrientsSchema = new mongoose.Schema({
+//   // --- Vitamins ---
+//   vitaminA: { type: Number, default: 0 },            // Retinol + Beta-carotene
+//   vitaminB: { type: Number, default: 0 },            // Thiamine
+//   // vitaminB2: { type: Number, default: 0 },            // Riboflavin
+//   // vitaminB3: { type: Number, default: 0 },            // Niacin
+//   // vitaminB5: { type: Number, default: 0 },            // Pantothenic Acid
+//   // vitaminB6: { type: Number, default: 0 },            // Pyridoxine
+//   // vitaminB7: { type: Number, default: 0 },            // Biotin
+//   // vitaminB9: { type: Number, default: 0 },            // Folate
+//   // vitaminB12: { type: Number, default: 0 },           // Cobalamin
+//   vitaminC: { type: Number, default: 0 },
+//   vitaminD: { type: Number, default: 0 },
+//   vitaminE: { type: Number, default: 0 },
+//   vitaminK: { type: Number, default: 0 },
 
-  // --- Minerals & Electrolytes ---
-  calcium: { type: Number, default: 0 },
-  iron: { type: Number, default: 0 },
-  magnesium: { type: Number, default: 0 },
-  phosphorus: { type: Number, default: 0 },
-  potassium: { type: Number, default: 0 },
-  sodium: { type: Number, default: 0 },
-  zinc: { type: Number, default: 0 },
-  copper: { type: Number, default: 0 },
-  manganese: { type: Number, default: 0 },
-  selenium: { type: Number, default: 0 },
-  iodine: { type: Number, default: 0 },
-  chromium: { type: Number, default: 0 },
-  fluoride: { type: Number, default: 0 },
-  molybdenum: { type: Number, default: 0 },
+//   // --- Minerals & Electrolytes ---
+//   calcium: { type: Number, default: 0 },
+//   iron: { type: Number, default: 0 },
+//   magnesium: { type: Number, default: 0 },
+//   phosphorus: { type: Number, default: 0 },
+//   potassium: { type: Number, default: 0 },
+//   sodium: { type: Number, default: 0 },
+//   zinc: { type: Number, default: 0 },
+//   copper: { type: Number, default: 0 },
+//   manganese: { type: Number, default: 0 },
+//   selenium: { type: Number, default: 0 },
+//   iodine: { type: Number, default: 0 },
+//   chromium: { type: Number, default: 0 },
+//   fluoride: { type: Number, default: 0 },
+//   molybdenum: { type: Number, default: 0 },
 
-  // --- Fatty Acids ---
-  omega3: { type: Number, default: 0 },
-  omega6: { type: Number, default: 0 },
+//   // --- Fatty Acids ---
+//   omega3: { type: Number, default: 0 },
+//   omega6: { type: Number, default: 0 },
 
-  // --- Amino Acids (Essentials) ---
-  leucine: { type: Number, default: 0 },
-  isoleucine: { type: Number, default: 0 },
-  valine: { type: Number, default: 0 },
-  lysine: { type: Number, default: 0 },
-  methionine: { type: Number, default: 0 },
-  phenylalanine: { type: Number, default: 0 },
-  threonine: { type: Number, default: 0 },
-  tryptophan: { type: Number, default: 0 },
-  histidine: { type: Number, default: 0 }
-});
+//   // --- Amino Acids (Essentials) ---
+//   leucine: { type: Number, default: 0 },
+//   isoleucine: { type: Number, default: 0 },
+//   valine: { type: Number, default: 0 },
+//   lysine: { type: Number, default: 0 },
+//   methionine: { type: Number, default: 0 },
+//   phenylalanine: { type: Number, default: 0 },
+//   threonine: { type: Number, default: 0 },
+//   tryptophan: { type: Number, default: 0 },
+//   histidine: { type: Number, default: 0 }
+// });
 
 
 const intakeHistorySchema = new mongoose.Schema(
@@ -60,8 +60,15 @@ const intakeHistorySchema = new mongoose.Schema(
     fat: Number,
     sugar: Number,
     fiber: Number,
+    vitaminA:{type:Number , default:0},
+    vitaminB:{type:Number , default:0},
+    vitaminC:{type:Number , default:0},
+    vitaminD:{type:Number , default:0},
+    vitaminE:{type:Number , default:0},
+    vitaminK:{type:Number , default:0},
+    calcium:{type:Number , default:0}
 
-    micronutrients: MicroNutrientsSchema,
+    // micronutrients: MicroNutrientsSchema,
   },
   { _id: false }
 );
@@ -131,11 +138,18 @@ const userSchema = new mongoose.Schema(
       fat: { type: Number, default: 0 },
       sugar: { type: Number, default: 0 },
       fiber: { type: Number, default: 0 },
+      vitaminA:{type:Number , default:0},
+      vitaminB:{type:Number , default:0},
+      vitaminC:{type:Number , default:0},
+      vitaminD:{type:Number , default:0},
+      vitaminE:{type:Number , default:0},
+      vitaminK:{type:Number , default:0},
+      calcium:{type:Number , default:0}
 
-      micronutrients: {
-        type: MicroNutrientsSchema,
-        default: () => ({})
-      },
+      // micronutrients: {
+      //   type: MicroNutrientsSchema,
+      //   default: () => ({})
+      // },
     },
 
     // 🔥 Nutrition intake history (AI learns from this)
@@ -169,9 +183,21 @@ const userSchema = new mongoose.Schema(
           required: false,
         }
       }
-    ]
+    ],
+
+    AdditionalInfo:{
+      avarage_sleep:{type:Number , default:0},
+      avarage_sleep_timing:{type:Number , default:0},
+      daily_morning_routine:{type:String},
+      daily_afternoon_routine:{type:String},
+      daily_evening_routine:{type:String},
+      daily_night_routine:{type:String},
+      mobile_screen_time:{type:Number , default:0},
+      person_businnes:{type:String},
+      additional_notes:{type:String}
+    }
   },
-  { timestamps: true }
+  { timestamps: true }  
 );
 
 
