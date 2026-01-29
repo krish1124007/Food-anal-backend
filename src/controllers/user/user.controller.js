@@ -21,7 +21,7 @@ export async function nutritionAnalyticsAgent(limits, user_Details, product_ingr
     const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || "http://127.0.0.1:8000";
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 second timeout
 
     try {
         const response = await fetch(
@@ -66,7 +66,7 @@ async function setDailyLimits(user_details) {
     const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || "http://127.0.0.1:8000";
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 second timeout
 
     try {
         const result = await fetch(`${PYTHON_BACKEND_URL}/setDailyLimits`, {
