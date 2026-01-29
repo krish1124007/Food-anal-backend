@@ -116,6 +116,49 @@ const setTheDailyLimits = asyncHandler(async (req, res) => {
         return returnCode(res, 500, false, "user is not found", null);
     }
 
+    // Activity multiplier
+    const activityMap = {
+        low: 1.2,
+        moderate: 1.5,
+        high: 1.8,
+        very_high: 2.0
+    };
+    const mltp = activityMap[user.activityLevel] || 1.2;
+
+    // BMR
+    let bmr = 0;
+    if (user.gender === "male") {
+        bmr = (10 * user.weight) + (6.25 * user.height) - (5 * user.age) + 5;
+    } else {
+        bmr = (10 * user.weight) + (6.25 * user.height) - (5 * user.age) - 161;
+    }
+
+    const cal = Math.round(bmr * mltp);
+
+    // Protein
+    const proteinFactorMap = {
+        healthy_life: 0.8,
+        lose: 1.4,
+        gain: 2.0,
+        athlete: 2.4
+    };
+    const factor = proteinFactorMap[user.goals] || 0.8;
+    const protein = user.weight * factor;
+    const proteinCalories = protein * 4;
+
+    // Fat (25%)
+    const fatCalories = cal * 0.25;
+    const fats = fatCalories / 9;
+
+    // Carbs = remaining calories
+    const carbCalories = cal - (proteinCalories + fatCalories);
+    const carbs = carbCalories / 4;
+
+    // Fiber
+    const fiber = Math.floor(cal / 1000) * 14;
+
+    console.log(cal, protein, carbs, fats, fiber);
+
     const result = await setDailyLimits({
         age: user.age,
         gender: user.gender,
@@ -124,11 +167,18 @@ const setTheDailyLimits = asyncHandler(async (req, res) => {
         activityLevel: user.activityLevel,
         goals: user.goals,
         illness: user.illnesses,
-        AdditionalInfo: user.AdditionalInfo
+        AdditionalInfo: user.AdditionalInfo,
+        dailyLimits: {
+            calories: cal,
+            protein: protein,
+            carbs: carbs,
+            fat: fats,
+            fiber: fiber
+        }
     })
 
     let aiRaw = await result.json();
-    const aiResponse = parseAIJSON(aiRaw);
+    const aiResponse = parseAIJSON(aiRaw.data);
 
     if (!aiResponse) {
         return returnCode(res, 500, false, "Failed to parse AI response", null);
@@ -290,6 +340,137 @@ const getUserDetails = asyncHandler(async (req, res) => {
     return returnCode(res, 200, true, "User details fetched successfully", user);
 });
 
+const getHealthReport = asyncHandler(async (req, res) => {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+        return returnCode(res, 404, false, "User not found", null);
+    }
+
+    // Get last 30 days of history
+    const history = user.nutritionHistory.sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 30);
+
+    // Calculate averages
+    const averages = {
+        calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, fiber: 0
+    };
+
+    if (history.length > 0) {
+        history.forEach(day => {
+            averages.calories += day.calories || 0;
+            averages.protein += day.protein || 0;
+            averages.carbs += day.carbs || 0;
+            averages.fat += day.fat || 0;
+            averages.sugar += day.sugar || 0;
+            averages.fiber += day.fiber || 0;
+        });
+
+        Object.keys(averages).forEach(key => {
+            averages[key] = Math.round(averages[key] / history.length);
+        });
+    }
+
+    const report = {
+        history: history.reverse(), // Send chronological for charts
+        averages,
+        dailyLimits: user.dailyLimits,
+        streak: calculateStreak(user.nutritionHistory), // Helper needed or just simplified
+        summary: "Your nutrition tracking is going well. " + (averages.protein < (user.dailyLimits?.protein || 50) ? "Try to increase protein intake." : "Protein intake is good.")
+    };
+
+    return returnCode(res, 200, true, "Health report generated", report);
+});
+
+const getRecommendations = asyncHandler(async (req, res) => {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+        return returnCode(res, 404, false, "User not found", null);
+    }
+
+    // Simple rule-based recommendations engine
+    const recommendations = [];
+    const limits = user.dailyLimits || {};
+
+    // Goals based
+    if (user.goals === 'lose_weight') {
+        recommendations.push({
+            type: 'diet',
+            title: 'Caloric Deficit',
+            description: 'Maintain a slight caloric deficit. Focus on high-volume, low-calorie foods like hydration-rich vegetables.'
+        });
+    } else if (user.goals === 'build_muscle') {
+        recommendations.push({
+            type: 'diet',
+            title: 'Protein Priority',
+            description: 'Ensure you are hitting your protein targets to support muscle repair and growth.'
+        });
+    }
+
+    // General Health
+    recommendations.push({
+        type: 'general',
+        title: 'Hydration',
+        description: 'Drink at least 8 glasses of water daily to maintain optimal metabolism.'
+    });
+
+    if (user.illnesses && user.illnesses.includes('diabetes')) {
+        recommendations.push({
+            type: 'medical',
+            title: 'Sugar Management',
+            description: 'Monitor glycemic index of foods. Avoid simple carbs and sugary drinks.'
+        });
+    }
+
+    return returnCode(res, 200, true, "Recommendations fetched", recommendations);
+});
+
+const aiChat = asyncHandler(async (req, res) => {
+    // Placeholder for AI Chat backend logic
+    // The user requested NOT to implement the actual AI call here.
+    const { message } = req.body;
+
+    // Mock response
+    return returnCode(res, 200, true, "Message received", {
+        reply: "This is a simulated AI response. The actual AI integration is pending implementation."
+    });
+});
+
+// Helper Function
+function calculateStreak(history) {
+    if (!history || history.length === 0) return 0;
+
+    const sorted = [...history].sort((a, b) => new Date(b.date) - new Date(a.date));
+    let streak = 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Check if entry exists for today or yesterday to start streak
+    const lastEntryDate = new Date(sorted[0].date);
+    lastEntryDate.setHours(0, 0, 0, 0);
+
+    const diffTime = Math.abs(today - lastEntryDate);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays > 1) return 0; // Streak broken
+
+    // This is a naive streak calculation, assuming daily entries. 
+    // Real implementation would check consecutive dates.
+    streak = 1;
+    for (let i = 0; i < sorted.length - 1; i++) {
+        const curr = new Date(sorted[i].date);
+        const next = new Date(sorted[i + 1].date);
+        curr.setHours(0, 0, 0, 0);
+        next.setHours(0, 0, 0, 0);
+
+        const diff = (curr - next) / (1000 * 60 * 60 * 24);
+        if (diff === 1) {
+            streak++;
+        } else {
+            break;
+        }
+    }
+    return streak;
+}
+
 export {
     askToAiToEatOrNot,
     acceptFood,
@@ -297,5 +478,8 @@ export {
     updateUser,
     deleteUser,
     clearCloudinaryImages,
-    getUserDetails
+    getUserDetails,
+    getHealthReport,
+    getRecommendations,
+    aiChat
 }

@@ -5,7 +5,10 @@ import {
     updateUser,
     deleteUser,
     clearCloudinaryImages,
-    getUserDetails
+    getUserDetails,
+    getHealthReport,
+    getRecommendations,
+    aiChat
 } from "../controllers/user/user.controller.js"
 import {
     createAccount,
@@ -29,6 +32,9 @@ router.route("/update-user").post(auth, updateUser);
 router.route("/delete-user").post(auth, deleteUser);
 router.route("/clear-cloudinary-images").post(auth, clearCloudinaryImages);
 router.route("/get-user-details").get(auth, getUserDetails);
+router.route("/get-health-report").get(auth, getHealthReport);
+router.route("/get-recommendations").get(auth, getRecommendations);
+router.route("/ai-chat").post(auth, aiChat);
 
 
 export const user_router = router;

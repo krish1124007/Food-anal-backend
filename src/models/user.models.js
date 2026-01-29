@@ -213,7 +213,7 @@ userSchema.methods.comparePassword = async function (password) {
 }
 
 userSchema.methods.generateToken = function () {
-  return jwt.sign({ id: this._id }, process.env.JWT_SECRET, { expiresIn: "1d" });
+  return jwt.sign({ id: this._id }, process.env.JWT_SECRET, { expiresIn: "10d" });
 }
 
 export const User = mongoose.model("User", userSchema);
