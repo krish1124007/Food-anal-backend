@@ -3,6 +3,19 @@ import { returnCode } from "../../utils/returnCode.js";
 import { User } from "../../models/user.models.js";
 import { uploadBufferToCloudinary } from "../../middlewares/multer.js"
 import { parseAIJSON } from "../../utils/parseJson.js";
+import cloudinary from "../../config/cloudinary.js";
+
+
+const clearCloudinaryImages = asyncHandler(async (req, res) => {
+    try {
+        const result = await cloudinary.api.delete_resources_by_prefix('Food/');
+        console.log("Cloudinary Delete Result:", result);
+        return returnCode(res, 200, true, "Successfully cleared Food images from Cloudinary", result);
+    } catch (error) {
+        console.error("Cloudinary Clear Error:", error);
+        return returnCode(res, 500, false, "Failed to clear images from Cloudinary", error.message);
+    }
+});
 
 export async function nutritionAnalyticsAgent(limits, user_Details, product_ingredients) {
     const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || "http://127.0.0.1:8000";
@@ -30,7 +43,6 @@ export async function nutritionAnalyticsAgent(limits, user_Details, product_ingr
         clearTimeout(timeoutId);
 
         if (!response.ok) {
-            // Get the error details from FastAPI
             const errorData = await response.json().catch(() => null);
             console.error("Python AI error:", {
                 status: response.status,
@@ -49,7 +61,6 @@ export async function nutritionAnalyticsAgent(limits, user_Details, product_ingr
         throw error;
     }
 }
-
 
 async function setDailyLimits(user_details) {
     const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || "http://127.0.0.1:8000";
@@ -80,14 +91,8 @@ async function setDailyLimits(user_details) {
     }
 }
 
-
-
-
-//user update functions
-
 const updateUser = asyncHandler(async (req, res) => {
     const { user_update_object } = req.body;
-
     const user = await User.findByIdAndUpdate(req.user.id, user_update_object, { new: true });
 
     if (!user) {
@@ -95,23 +100,18 @@ const updateUser = asyncHandler(async (req, res) => {
     }
 
     return returnCode(res, 200, true, "user updated successfully", user);
-
 })
 
 const deleteUser = asyncHandler(async (req, res) => {
     const user = await User.findByIdAndDelete(req.user.id);
-
     if (!user) {
         return returnCode(res, 500, false, "user is not found", null);
     }
-
     return returnCode(res, 200, true, "user deleted successfully", user);
 })
 
 const setTheDailyLimits = asyncHandler(async (req, res) => {
-
     const user = await User.findById(req.user.id);
-
     if (!user) {
         return returnCode(res, 500, false, "user is not found", null);
     }
@@ -142,52 +142,25 @@ const setTheDailyLimits = asyncHandler(async (req, res) => {
     return returnCode(res, 200, true, "successfully fetch all details", aiResponse);
 })
 
-
-
 const askToAiToEatOrNot = asyncHandler(async (req, res) => {
     const { name_of_food, des } = req.body;
     const user = req.user;
 
-    // Validate required fields
     if (!name_of_food || typeof name_of_food !== 'string' || name_of_food.trim() === '') {
-        return returnCode(
-            res,
-            400,
-            false,
-            "Food name is required and must be a non-empty string",
-            null
-        );
+        return returnCode(res, 400, false, "Food name is required and must be a non-empty string", null);
     }
 
-    // Validate description (optional but if provided, should be string)
     if (des && typeof des !== 'string') {
-        return returnCode(
-            res,
-            400,
-            false,
-            "Food description must be a string if provided",
-            null
-        );
+        return returnCode(res, 400, false, "Food description must be a string if provided", null);
     }
-
 
     if (!req.file) {
-        return returnCode(
-            res,
-            400,
-            false,
-            "Food image is required",
-            null
-        );
+        return returnCode(res, 400, false, "Food image is required", null);
     }
 
     console.log("The file is : ", req.file)
 
-    const uploadResult = await uploadBufferToCloudinary(
-        req.file.buffer,
-        "Food"
-    );
-
+    const uploadResult = await uploadBufferToCloudinary(req.file.buffer, "Food");
     console.log("upload result is : ", uploadResult)
 
     const main_user = await User.findById(user.id);
@@ -197,7 +170,6 @@ const askToAiToEatOrNot = asyncHandler(async (req, res) => {
         name: name_of_food,
         description: des && des.trim() ? des.trim() : "No description provided"
     };
-
 
     console.log("Sending to AI - product_Details:", product_Details);
 
@@ -218,19 +190,16 @@ const askToAiToEatOrNot = asyncHandler(async (req, res) => {
 
     console.log(typeof JSON.parse(aiResult.ai_response));
 
-    return returnCode(
-        res,
-        200,
-        true,
-        "Successfully fetched AI analysis",
-        JSON.parse(aiResult.ai_response)
-    );
+    return returnCode(res, 200, true, "Successfully fetched AI analysis", JSON.parse(aiResult.ai_response));
 });
-
 
 const acceptFood = asyncHandler(async (req, res) => {
     const { limits_update, date } = req.body;
     const user_id = req.user.id;
+
+    console.log("--- acceptFood Debug ---");
+    console.log("User ID:", user_id);
+    console.log("Request Body:", JSON.stringify(req.body, null, 2));
 
     const user = await User.findById(user_id);
 
@@ -238,26 +207,22 @@ const acceptFood = asyncHandler(async (req, res) => {
         return returnCode(res, 500, false, "user is not found", null);
     }
 
-    // 1. Identify Target Date
-    // If date is provided (YYYY-MM-DD), use it. Otherwise fall back to server today.
     let targetDate;
     if (date) {
         targetDate = new Date(date);
     } else {
         targetDate = new Date();
     }
-    // Normalize to midnight for consistent comparison
     targetDate.setHours(0, 0, 0, 0);
 
-    // 2. Find history entry for that date
     let targetHistory = user.nutritionHistory.find(h => {
         const hDate = new Date(h.date);
         hDate.setHours(0, 0, 0, 0);
         return hDate.getTime() === targetDate.getTime();
     });
 
-    // 3. If not found, create it
     if (!targetHistory) {
+        console.log("Creating new history entry for date:", targetDate);
         user.nutritionHistory.push({
             date: targetDate,
             calories: 0,
@@ -275,40 +240,62 @@ const acceptFood = asyncHandler(async (req, res) => {
             calcium: 0
         });
         targetHistory = user.nutritionHistory[user.nutritionHistory.length - 1];
+    } else {
+        console.log("Found existing history entry.");
     }
 
-    // 4. Recursive Update Function for History (Incrementing)
+    console.log("History Before Update:", JSON.stringify(targetHistory, null, 2));
+
     const updateStats = (target, source) => {
         for (const key in source) {
             if (typeof source[key] === 'object' && source[key] !== null && !Array.isArray(source[key])) {
-                if (!target[key]) target[key] = {}; // Ensure nested object exists
-                updateStats(target[key], source[key]); // Recurse
-            } else if (typeof source[key] === 'number') {
-                // Initialize if undefined
-                if (typeof target[key] !== 'number') {
-                    target[key] = 0;
+                if (!target[key]) target[key] = {};
+                updateStats(target[key], source[key]);
+            }
+            else {
+                let val = source[key];
+                if (typeof val === 'string') {
+                    val = parseFloat(val);
                 }
-                // ADD the value (Consumption increases)
-                target[key] += source[key];
+
+                if (typeof val === 'number' && !isNaN(val)) {
+                    if (typeof target[key] !== 'number') {
+                        target[key] = 0;
+                    }
+                    console.log(`Updating ${key}: ${target[key]} + ${val}`);
+                    target[key] += val;
+                }
             }
         }
     };
 
-    // Apply updates to the history entry
-    updateStats(targetHistory, limits_update);
+    if (limits_update) {
+        updateStats(targetHistory, limits_update);
+    } else {
+        console.warn("No limits_update provided in request body");
+    }
+
+    console.log("History After Update:", JSON.stringify(targetHistory, null, 2));
 
     await user.save();
 
     return returnCode(res, 200, true, "successfully updated intake history", user);
 })
 
+const getUserDetails = asyncHandler(async (req, res) => {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+        return returnCode(res, 404, false, "User not found", null);
+    }
+    return returnCode(res, 200, true, "User details fetched successfully", user);
+});
 
 export {
     askToAiToEatOrNot,
     acceptFood,
     setTheDailyLimits,
     updateUser,
-    deleteUser
+    deleteUser,
+    clearCloudinaryImages,
+    getUserDetails
 }
-
-
