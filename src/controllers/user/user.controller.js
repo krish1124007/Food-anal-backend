@@ -4,6 +4,8 @@ import { User } from "../../models/user.models.js";
 import { uploadBufferToCloudinary } from "../../middlewares/multer.js"
 import { parseAIJSON } from "../../utils/parseJson.js";
 import cloudinary from "../../config/cloudinary.js";
+import { getGroqCompletion } from "../../utils/groq.js";
+import { analyzeFoodImage } from "../../utils/imageprocessing.js";
 
 
 const clearCloudinaryImages = asyncHandler(async (req, res) => {
@@ -221,8 +223,19 @@ const askToAiToEatOrNot = asyncHandler(async (req, res) => {
         description: des && des.trim() ? des.trim() : "No description provided"
     };
 
-    console.log("Sending to AI - product_Details:", product_Details);
+    console.log("Sending to AI Vision - product_Details:", product_Details);
 
+    // Get today's intake for context
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayIntake = main_user.nutritionHistory.find(h => {
+        const hDate = new Date(h.date);
+        hDate.setHours(0, 0, 0, 0);
+        return hDate.getTime() === today.getTime();
+    }) || { calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, fiber: 0 };
+
+    /* 
+    // OLD Python-based Nutrition Analysis
     const aiResult = await nutritionAnalyticsAgent(
         main_user.dailyLimits,
         {
@@ -237,10 +250,30 @@ const askToAiToEatOrNot = asyncHandler(async (req, res) => {
         },
         product_Details
     );
+    */
 
-    console.log(typeof JSON.parse(aiResult.ai_response));
+    // NEW Groq Vision Analysis
+    const visionResult = await analyzeFoodImage({
+        imageSource: req.file.buffer, // We pass the buffer directly
+        user_today_details: {
+            todayIntake,
+            dailyLimits: main_user.dailyLimits
+        },
+        user_data: {
+            age: main_user.age,
+            gender: main_user.gender,
+            height: main_user.height,
+            weight: main_user.weight,
+            activityLevel: main_user.activityLevel,
+            goals: main_user.goals,
+            illnesses: main_user.illnesses,
+            additionalHealthInfo: main_user.AdditionalInfo
+        }
+    });
 
-    return returnCode(res, 200, true, "Successfully fetched AI analysis", JSON.parse(aiResult.ai_response));
+    console.log("Vision analysis complete");
+
+    return returnCode(res, 200, true, "Successfully fetched AI analysis", visionResult);
 });
 
 const acceptFood = asyncHandler(async (req, res) => {
@@ -341,12 +374,32 @@ const getUserDetails = asyncHandler(async (req, res) => {
 });
 
 const getHealthReport = asyncHandler(async (req, res) => {
+    const { date } = req.query;
     const user = await User.findById(req.user.id);
     if (!user) {
         return returnCode(res, 404, false, "User not found", null);
     }
 
-    // Get last 30 days of history
+    if (date) {
+        const targetDate = new Date(date);
+        targetDate.setHours(0, 0, 0, 0);
+
+        const dayData = user.nutritionHistory.find(h => {
+            const hDate = new Date(h.date);
+            hDate.setHours(0, 0, 0, 0);
+            return hDate.getTime() === targetDate.getTime();
+        });
+
+        if (dayData) {
+            return returnCode(res, 200, true, "Selected day report fetched", {
+                dayData,
+                dailyLimits: user.dailyLimits,
+                isSpecificDate: true
+            });
+        }
+    }
+
+    // Default: Get last 30 days of history
     const history = user.nutritionHistory.sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 30);
 
     // Calculate averages
@@ -424,14 +477,52 @@ const getRecommendations = asyncHandler(async (req, res) => {
 });
 
 const aiChat = asyncHandler(async (req, res) => {
-    // Placeholder for AI Chat backend logic
-    // The user requested NOT to implement the actual AI call here.
-    const { message } = req.body;
+    const { message, chatHistory } = req.body;
+    const user = await User.findById(req.user.id);
 
-    // Mock response
-    return returnCode(res, 200, true, "Message received", {
-        reply: "This is a simulated AI response. The actual AI integration is pending implementation."
-    });
+    if (!user) {
+        return returnCode(res, 404, false, "User not found", null);
+    }
+
+    // Extracting user health information for AI context
+    const userContext = {
+        name: user.name,
+        age: user.age,
+        gender: user.gender,
+        height: user.height,
+        weight: user.weight,
+        activityLevel: user.activityLevel,
+        goals: user.goals,
+        illnesses: user.illnesses,
+        dailyLimits: user.dailyLimits,
+        additionalHealthInfo: user.AdditionalInfo
+    };
+
+    const systemPrompt = `You are a specialized health and nutrition AI assistant for the 'Food Activity' app.
+    
+    USER PROFILE:
+    ${JSON.stringify(userContext, null, 2)}
+    
+    STRICT GUIDELINES:
+    1. Always address the user as ${user.name}.
+    2. Your knowledge is strictly limited to health, nutrition, diet, fitness, and the features of this app.
+    3. If the user asks anything NOT related to these topics (e.g., politics, coding, general news, jokes), politely refuse to answer and redirect them to health-related questions.
+    4. Provide personalized advice based on the USER PROFILE provided above.
+    5. Be professional, encouraging, and concise.
+    6. Do not give medical prescriptions; instead, suggest consulting a doctor for specialized medical issues.`;
+
+    const messages = [
+        { role: "system", content: systemPrompt },
+        ...(chatHistory || []),
+        { role: "user", content: message }
+    ];
+
+    try {
+        const reply = await getGroqCompletion(messages);
+        return returnCode(res, 200, true, "Success", { reply });
+    } catch (error) {
+        return returnCode(res, 500, false, "AI Chat service failed", error.message);
+    }
 });
 
 // Helper Function
