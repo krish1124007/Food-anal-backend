@@ -19,79 +19,8 @@ const clearCloudinaryImages = asyncHandler(async (req, res) => {
     }
 });
 
-export async function nutritionAnalyticsAgent(limits, user_Details, product_ingredients) {
-    const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || "http://127.0.0.1:8000";
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 second timeout
 
-    try {
-        const response = await fetch(
-            `${PYTHON_BACKEND_URL}/analyze`,
-            {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    dailyuserlimits: limits,
-                    user_Details,
-                    product_Details: product_ingredients
-                }),
-                signal: controller.signal
-            }
-        );
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => null);
-            console.error("Python AI error:", {
-                status: response.status,
-                statusText: response.statusText,
-                errorDetails: errorData
-            });
-            throw new Error(`AI service failed: ${response.status} - ${errorData?.detail || response.statusText}`);
-        }
-
-        return await response.json();
-    } catch (error) {
-        clearTimeout(timeoutId);
-        if (error.name === 'AbortError') {
-            throw new Error('AI service timeout - please try again');
-        }
-        throw error;
-    }
-}
-
-async function setDailyLimits(user_details) {
-    const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || "http://127.0.0.1:8000";
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 second timeout
-
-    try {
-        const result = await fetch(`${PYTHON_BACKEND_URL}/setDailyLimits`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                user_Details: user_details
-            }),
-            signal: controller.signal
-        });
-
-        clearTimeout(timeoutId);
-        return result;
-    } catch (error) {
-        clearTimeout(timeoutId);
-        if (error.name === 'AbortError') {
-            throw new Error('Daily limits service timeout - please try again');
-        }
-        throw error;
-    }
-}
 
 const updateUser = asyncHandler(async (req, res) => {
     const { user_update_object } = req.body;
@@ -161,7 +90,54 @@ const setTheDailyLimits = asyncHandler(async (req, res) => {
 
     console.log(cal, protein, carbs, fats, fiber);
 
-    const result = await setDailyLimits({
+    // System prompt from Python backend
+    const SYSTEM_PROMPT = `You are a certified nutrition and health analysis AI.
+
+The user will provide their personal profile details (age, gender, height, weight, activity level, goals, illness, and additional info) and a set of PRE-CALCULATED daily nutrition limits (calories, protein, carbs, fat, fiber).
+
+Your objective is to:
+1. **Analyze User Health Data**: Examine the user's illnesses (e.g., diabetes, blood pressure, etc.) and goals.
+2. **Review and Adjust Baseline Limits**: Evaluate the pre-calculated limits (calories, protein, carbs, fat, fiber) provided by the system. If they are not appropriate for the user's specific health condition or goals, ADJUST them reasonably. For example:
+   - For diabetics: Ensure carbs and sugar are strictly controlled.
+   - For muscle building: Ensure protein is sufficient.
+   - For heart/cholesterol issues: Monitor fat and fiber.
+3. **Calculate Missing Metrics**: 
+   - Calculate the daily **sugar** limit based on total calorie intake and health conditions.
+   - Calculate the daily **calcium** limit (in mg) based on the user's age and gender.
+4. **Set Vitamin Limits (RND)**: Determine the daily limits for Vitamin A, B, C, D, E, and K according to RND (Recommended Nutritional Data/RDA) for the user's profile.
+
+Rules:
+1. Use scientifically accepted nutrition standards (WHO / RDA / ICMR).
+2. All values must be realistic, safe, and personalized.
+3. Use the following units:
+   - Calories: kcal
+   - Macronutrients: grams (g)
+   - Minerals (Calcium): milligrams (mg)
+   - Vitamins: Set values in mg or µg as per standard guidelines.
+4. Return ONLY a valid JSON object.
+5. Do NOT add explanations, comments, markdown, or extra text.
+6. Do NOT rename, remove, or add any keys.
+7. Ensure all values are numbers (no strings, no nulls).
+
+Return the JSON in exactly the structure below:
+
+{
+  "calories": ,
+  "protein": ,
+  "carbs": ,
+  "fat": ,
+  "sugar": ,
+  "fiber": ,
+  "vitaminA": ,
+  "vitaminB": ,
+  "vitaminC": ,
+  "vitaminD": ,
+  "vitaminE": ,
+  "vitaminK": ,
+  "calcium": 
+}`;
+
+    const userProfileData = {
         age: user.age,
         gender: user.gender,
         height: user.height,
@@ -177,21 +153,36 @@ const setTheDailyLimits = asyncHandler(async (req, res) => {
             fat: fats,
             fiber: fiber
         }
-    })
+    };
 
-    let aiRaw = await result.json();
-    const aiResponse = parseAIJSON(aiRaw.data);
+    const messages = [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: `User Profile Details:\n${JSON.stringify(userProfileData, null, 2)}` }
+    ];
 
-    if (!aiResponse) {
-        return returnCode(res, 500, false, "Failed to parse AI response", null);
+    try {
+        // Use Groq directly instead of Python backend
+        const aiResponseText = await getGroqCompletion(messages, {
+            model: "llama-3.1-8b-instant",
+            temperature: 0.3
+        });
+
+        const aiResponse = parseAIJSON(aiResponseText);
+
+        if (!aiResponse) {
+            return returnCode(res, 500, false, "Failed to parse AI response", null);
+        }
+
+        user.dailyLimits = aiResponse;
+        user.markModified('dailyLimits');
+        await user.save();
+        console.log(aiResponse);
+
+        return returnCode(res, 200, true, "successfully fetch all details", aiResponse);
+    } catch (error) {
+        console.error("Error generating daily limits:", error);
+        return returnCode(res, 500, false, "Failed to generate daily limits", error.message);
     }
-
-    user.dailyLimits = aiResponse;
-    user.markModified('dailyLimits');
-    await user.save();
-    console.log(aiResponse)
-
-    return returnCode(res, 200, true, "successfully fetch all details", aiResponse);
 })
 
 const askToAiToEatOrNot = asyncHandler(async (req, res) => {

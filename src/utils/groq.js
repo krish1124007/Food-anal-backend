@@ -7,14 +7,19 @@ export const groq = new Groq({
     apiKey: process.env.GROQ_API_KEY,
 });
 
-export const getGroqCompletion = async (messages, model = "llama-3.1-8b-instant") => {
+export const getGroqCompletion = async (messages, options = {}) => {
     try {
+        // Support both old signature (messages, model) and new signature (messages, options)
+        const model = typeof options === 'string' ? options : (options.model || "llama-3.1-8b-instant");
+        const temperature = typeof options === 'object' ? (options.temperature ?? 0.7) : 0.7;
+        const max_tokens = typeof options === 'object' ? (options.max_tokens ?? 1024) : 1024;
+
         const response = await groq.chat.completions.create({
             messages,
             model,
-            temperature: 0.7,
-            max_tokens: 1024,
-            top_p: 1,
+            temperature,
+            max_tokens,
+            top_p: options.top_p ?? 1,
             stream: false,
             stop: null,
         });
